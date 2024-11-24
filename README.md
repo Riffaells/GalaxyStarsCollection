@@ -1,6 +1,6 @@
 # 🛸 Go Script for Collecting Star Dust in Tiny Universe 🌌
 
-This project provides a 🚀 **bot** that collects star dust from a service using an API and sends updates to **Telegram**. You can configure it to run at random intervals and track your progress over time.
+This project provides a 🚀 bot that collects star dust from Tiny Verse using an API and sends updates to Telegram. You can configure it to run at random intervals and track your progress over time.
 
 [Русский](README_RU.md) | **English**
 
