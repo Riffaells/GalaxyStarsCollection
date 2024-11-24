@@ -36,7 +36,7 @@ func main() {
 		"ToleranceFrom":   cfg.ToleranceFrom,
 		"ToleranceTo":     cfg.ToleranceTo,
 		"StatsPerRequest": cfg.StatsPerRequest,
-		"GalaxyID":        cfg.GalaxyIDs,
+		"GalaxyIDs":       cfg.GalaxyIDs,
 		"StarsAutoBuy":    cfg.StarsAutoBuy,
 		"StarsCount":      cfg.StarsAutoBuyCount,
 	}

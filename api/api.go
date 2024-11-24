@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -131,12 +132,17 @@ func (api *APIHandler) CheckStats() ([]map[string]interface{}, error) {
 	return results, nil
 }
 
-func (api *APIHandler) BuyStars(galaxyID string, starsCount string) ([]map[string]interface{}, error) {
+func (api *APIHandler) BuyStars(galaxyIDs []string, starsCount string) ([]map[string]interface{}, error) {
 	var results []map[string]interface{}
 
-	for _, session := range api.Sessions {
+	// Проверяем, что длина galaxyIDs совпадает с количеством сессий
+	if len(galaxyIDs) != len(api.Sessions) {
+		return nil, fmt.Errorf("length of galaxyIDs (%d) must match number of sessions (%d)", len(galaxyIDs), len(api.Sessions))
+	}
+
+	for i, session := range api.Sessions {
 		data := map[string]string{
-			"galaxy_id": galaxyID,
+			"galaxy_id": galaxyIDs[i], // Используем galaxyID для текущей сессии
 			"session":   session,
 			"stars":     starsCount,
 		}
@@ -145,13 +151,16 @@ func (api *APIHandler) BuyStars(galaxyID string, starsCount string) ([]map[strin
 		if err != nil {
 			log.Printf("Error buying stars for session %s: %v", session, err)
 			results = append(results, map[string]interface{}{
-				"session": session,
-				"error":   err.Error(),
+				"session":   session,
+				"galaxy_id": galaxyIDs[i],
+				"error":     err.Error(),
 			})
 			continue
 		}
 
+		// Добавляем session и galaxyID в ответ
 		response["session"] = session
+		response["galaxy_id"] = galaxyIDs[i]
 		results = append(results, response)
 	}
 

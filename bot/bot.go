@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"TinyVerse/api"
@@ -56,6 +57,8 @@ func (b *Bot) Run() {
 	defer ticker.Stop()
 
 	b.notifyTelegram("🤖 Bot started!")
+
+	//b.attemptAutoBuy()
 
 	for range ticker.C {
 		b.collectStars()
@@ -147,39 +150,54 @@ func (b *Bot) handleStatistics() {
 }
 
 func (b *Bot) attemptAutoBuy() {
-	for _, galaxyID := range b.GalaxyIDs {
-		results, err := b.APIHandler.BuyStars(galaxyID, fmt.Sprintf("%d", b.StarsCount))
-		if err != nil {
-			log.Printf("Error processing BuyStars for galaxy %s: %v", galaxyID, err)
-			b.notifyTelegram(fmt.Sprintf("⚠️ Error processing BuyStars for galaxy %s: %v", galaxyID, err))
+	// Проверяем, что длина GalaxyIDs совпадает с количеством сессий
+	if len(b.GalaxyIDs) != len(b.APIHandler.Sessions) {
+		log.Printf("Mismatch: %d galaxyIDs but %d sessions", len(b.GalaxyIDs), len(b.APIHandler.Sessions))
+		b.notifyTelegram(fmt.Sprintf("⚠️ Mismatch: %d galaxyIDs but %d sessions", len(b.GalaxyIDs), len(b.APIHandler.Sessions)))
+		return
+	}
+
+	// Вызываем BuyStars с соответствующим списком galaxyIDs
+	results, err := b.APIHandler.BuyStars(b.GalaxyIDs, fmt.Sprintf("%d", b.StarsCount))
+	if err != nil {
+		log.Printf("Error processing BuyStars: %v", err)
+		b.notifyTelegram(fmt.Sprintf("⚠️ Error processing BuyStars: %v", err))
+		return
+	}
+
+	// Обрабатываем результаты
+	for _, result := range results {
+		session := result["session"].(string)
+		galaxyID := result["galaxy_id"].(string) // Новый ключ для galaxyID в результате
+
+		if errMsg, exists := result["error"]; exists {
+			errMsgStr := fmt.Sprintf("%v", errMsg)
+			log.Printf("Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsgStr)
+
+			// Проверка на "не хватает пыли"
+			if strings.Contains(errMsgStr, "not enough dust") {
+				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Not enough dust to buy stars.", session, galaxyID))
+			} else {
+				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsgStr))
+			}
 			continue
 		}
 
-		for _, result := range results {
-			session := result["session"].(string)
+		apiResponse, ok := result["response"].(map[string]interface{})
+		if !ok {
+			log.Printf("Session %s, Galaxy %s: Unexpected response format", session, galaxyID)
+			b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Unexpected response format", session, galaxyID))
+			continue
+		}
 
-			if errMsg, exists := result["error"]; exists {
-				log.Printf("Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsg)
-				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsg))
-				continue
-			}
-
-			apiResponse, ok := result["response"].(map[string]interface{})
-			if !ok {
-				log.Printf("Session %s, Galaxy %s: Unexpected response format", session, galaxyID)
-				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Unexpected response format", session, galaxyID))
-				continue
-			}
-
-			invoice, ok := apiResponse["invoice"].(string)
-			if ok {
-				message := fmt.Sprintf("🌌 Invoice generated for session %s, galaxy %s: %s", session, galaxyID, invoice)
-				log.Println(message)
-				b.notifyTelegram(message)
-			} else {
-				log.Printf("Session %s, Galaxy %s: Invoice not found in response", session, galaxyID)
-				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Invoice not found in response", session, galaxyID))
-			}
+		invoice, ok := apiResponse["invoice"].(string)
+		if ok {
+			message := fmt.Sprintf("🌌 Invoice generated for session %s, galaxy %s: %s", session, galaxyID, invoice)
+			log.Println(message)
+			b.notifyTelegram(message)
+		} else {
+			log.Printf("Session %s, Galaxy %s: Invoice not found in response", session, galaxyID)
+			b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Invoice not found in response", session, galaxyID))
 		}
 	}
 }

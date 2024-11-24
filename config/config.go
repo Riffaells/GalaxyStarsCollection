@@ -27,7 +27,6 @@ func GetEnvAsSlice(key string, delimiter string) []string {
 	if value == "" {
 		return []string{}
 	}
-
 	return strings.Split(value, delimiter)
 }
 
