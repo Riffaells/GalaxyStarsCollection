@@ -166,7 +166,7 @@ func (b *Bot) attemptAutoBuy() {
 	}
 
 	// Обрабатываем результаты
-	for _, result := range results {
+	for i, result := range results {
 		session := result["session"].(string)
 		galaxyID := result["galaxy_id"].(string) // Новый ключ для galaxyID в результате
 
@@ -192,12 +192,14 @@ func (b *Bot) attemptAutoBuy() {
 
 		invoice, ok := apiResponse["invoice"].(string)
 		if ok {
-			message := fmt.Sprintf("🌌 Invoice generated for session %s, galaxy %s: %s", session, galaxyID, invoice)
+
+			message := fmt.Sprintf("🌌 Invoice generated for session %d, galaxy %s: %s", i, galaxyID, invoice)
+			message2 := fmt.Sprintf("🌌 Invoice generated for session %d", i)
 			log.Println(message)
-			b.notifyTelegram(message)
+			b.notifyTelegram(message2)
 		} else {
 			log.Printf("Session %s, Galaxy %s: Invoice not found in response", session, galaxyID)
-			b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Invoice not found in response", session, galaxyID))
+			b.notifyTelegram(fmt.Sprintf("⚠️ Session %d, Galaxy %s: Invoice not found in response", i, galaxyID))
 		}
 	}
 }
