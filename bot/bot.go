@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"strings"
 	"time"
 
 	"TinyVerse/api"
@@ -12,15 +11,16 @@ import (
 )
 
 type Bot struct {
-	ToleranceFrom   int
-	ToleranceTo     int
-	StatsPerRequest int
-	APIHandler      *api.APIHandler
-	TelegramBot     *tgbotapi.BotAPI
-	TelegramChatID  int64
-	GalaxyIDs       []string
-	StarsAutoBuy    bool
-	StarsCount      int
+	ToleranceFrom       int
+	ToleranceTo         int
+	StatsPerRequest     int
+	StatsPerRequestBase int
+	APIHandler          *api.APIHandler
+	TelegramBot         *tgbotapi.BotAPI
+	TelegramChatID      int64
+	GalaxyIDs           []string
+	StarsAutoBuy        bool
+	StarsCount          int
 }
 
 func NewBot(apiHandler *api.APIHandler, telegramToken string, telegramChatID int64, config map[string]interface{}) (*Bot, error) {
@@ -40,15 +40,16 @@ func NewBot(apiHandler *api.APIHandler, telegramToken string, telegramChatID int
 	starsCount, _ := config["StarsCount"].(int)
 
 	return &Bot{
-		ToleranceFrom:   toleranceFrom,
-		ToleranceTo:     toleranceTo,
-		StatsPerRequest: statsPerRequest,
-		APIHandler:      apiHandler,
-		TelegramBot:     tgBot,
-		TelegramChatID:  telegramChatID,
-		GalaxyIDs:       galaxyIDs,
-		StarsAutoBuy:    starsAutoBuy,
-		StarsCount:      starsCount,
+		ToleranceFrom:       toleranceFrom,
+		ToleranceTo:         toleranceTo,
+		StatsPerRequest:     statsPerRequest,
+		StatsPerRequestBase: statsPerRequest,
+		APIHandler:          apiHandler,
+		TelegramBot:         tgBot,
+		TelegramChatID:      telegramChatID,
+		GalaxyIDs:           galaxyIDs,
+		StarsAutoBuy:        starsAutoBuy,
+		StarsCount:          starsCount,
 	}, nil
 }
 
@@ -57,8 +58,6 @@ func (b *Bot) Run() {
 	defer ticker.Stop()
 
 	b.notifyTelegram("🤖 Bot started!")
-
-	//b.attemptAutoBuy()
 
 	for range ticker.C {
 		b.collectStars()
@@ -134,19 +133,27 @@ func (b *Bot) handleStatistics() {
 	}
 
 	for i, result := range results {
-		session := result["session"].(string)
+		// Проверяем наличие ключа "session" и его тип
+		session, ok := result["session"].(string)
+		if !ok || session == "" {
+			log.Printf("Session key missing or not a string in result: %+v", result)
+			continue
+		}
 
+		// Проверяем наличие ошибки
 		if err, exists := result["error"]; exists {
 			log.Printf("Session %s: error checking stats: %v", session, err)
 			continue
 		}
 
+		// Форматируем и обрабатываем статистику
 		stats := formatStats(result)
 		log.Printf("SessionId %d stats: %s", i, stats)
 		b.notifyTelegram(stats)
 	}
 
-	b.StatsPerRequest = 10
+	// Сбрасываем счетчик
+	b.StatsPerRequest = b.StatsPerRequestBase
 }
 
 func (b *Bot) attemptAutoBuy() {
@@ -166,41 +173,36 @@ func (b *Bot) attemptAutoBuy() {
 	}
 
 	// Обрабатываем результаты
-	for i, result := range results {
-		session := result["session"].(string)
-		galaxyID := result["galaxy_id"].(string) // Новый ключ для galaxyID в результате
+	for id, result := range results {
 
-		if errMsg, exists := result["error"]; exists {
-			errMsgStr := fmt.Sprintf("%v", errMsg)
-			log.Printf("Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsgStr)
-
-			// Проверка на "не хватает пыли"
-			if strings.Contains(errMsgStr, "not enough dust") {
-				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Not enough dust to buy stars.", session, galaxyID))
-			} else {
-				b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Error buying stars: %v", session, galaxyID, errMsgStr))
-			}
+		if _, exists := result["error"]; exists {
+			message := fmt.Sprintf("❌ SessionId %d: Error buying stars", id)
+			log.Printf(message)
+			b.notifyTelegram(message)
 			continue
 		}
 
+		// Проверяем, есть ли "response" и корректный формат
 		apiResponse, ok := result["response"].(map[string]interface{})
 		if !ok {
-			log.Printf("Session %s, Galaxy %s: Unexpected response format", session, galaxyID)
-			b.notifyTelegram(fmt.Sprintf("⚠️ Session %s, Galaxy %s: Unexpected response format", session, galaxyID))
+			message := fmt.Sprintf("⚠️ Session %d: Unexpected response format", id)
+			log.Printf(message)
+			b.notifyTelegram(message)
 			continue
 		}
 
-		invoice, ok := apiResponse["invoice"].(string)
-		if ok {
-
-			message := fmt.Sprintf("🌌 Invoice generated for session %d, galaxy %s: %s", i, galaxyID, invoice)
-			message2 := fmt.Sprintf("🌌 Invoice generated for session %d", i)
-			log.Println(message)
-			b.notifyTelegram(message2)
+		// Проверка успешной покупки
+		var text string
+		if _, exists := apiResponse["id"]; exists {
+			text = "✅ Successful purchase"
 		} else {
-			log.Printf("Session %s, Galaxy %s: Invoice not found in response", session, galaxyID)
-			b.notifyTelegram(fmt.Sprintf("⚠️ Session %d, Galaxy %s: Invoice not found in response", i, galaxyID))
+			text = "❌ Purchase error"
 		}
+
+		// Формирование сообщения
+		message := fmt.Sprintf("%s: SessionId %d", text, id)
+		log.Println(message)
+		b.notifyTelegram(message)
 	}
 }
 
